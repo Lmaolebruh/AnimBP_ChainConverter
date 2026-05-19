@@ -1,15 +1,36 @@
-param (
-    [string]$InputJsonPath = "C:\Users\UltraPc\Desktop\Output\Exports\Marvel\Content\Marvel\Characters\1048\1048001\Meshes\Game.json",
-    [string]$OutputTxtPath = "C:\Users\UltraPc\Desktop\Output\Exports\AnimBPs_Output.txt"
-)
+param ()
 
 [System.Threading.Thread]::CurrentThread.CurrentCulture = 'en-US'
 
-$raw = Get-Content -Raw -Path $InputJsonPath | ConvertFrom-Json
+# ---------------------------------------------------------------------------
+# Saved output path — script rewrites this line on first run
+# ---------------------------------------------------------------------------
+$SavedOutputPath = "C:\Users\UltraPc\Desktop\Output\Exports\AnimBPs_Output.txt"
+
+if ($SavedOutputPath -eq "") {
+    $OutputTxtPath = Read-Host "Enter output .txt path (will be saved for future runs)"
+    # Rewrite this script's saved path in-place
+    $scriptContent = Get-Content $PSCommandPath -Raw
+    $scriptContent = $scriptContent -replace '(\$SavedOutputPath\s*=\s*)"[^"]*"', "`$1`"$OutputTxtPath`""
+    Set-Content -Path $PSCommandPath -Value $scriptContent -NoNewline
+    Write-Host "Output path saved into script."
+} else {
+    $OutputTxtPath = $SavedOutputPath
+    Write-Host "Using saved output path: $OutputTxtPath"
+    Write-Host "(Set `$SavedOutputPath to `"`" in the script to reset)"
+}
+
+$InputJsonPath = Read-Host "Enter input JSON path"
+
+if (-not (Test-Path $InputJsonPath)) {
+    Write-Host "Input file not found: $InputJsonPath"
+    exit 1
+}
 
 # ---------------------------------------------------------------------------
 # Find the Properties bag that contains AnimGraph nodes
 # ---------------------------------------------------------------------------
+$raw = Get-Content -Raw -Path $InputJsonPath | ConvertFrom-Json
 $props = $null
 
 if ($raw -is [System.Array]) {
@@ -176,37 +197,25 @@ function Format-Chain {
 }
 
 # ---------------------------------------------------------------------------
-# KawaiiPhysics node formatter with pin linking
+# Node formatters
 # ---------------------------------------------------------------------------
 function Format-KawaiiPhysicsNode {
     param ($key, $node, $index, $inGuid, $outGuid, $prevName, $prevOutGuid, $nextName, $nextInGuid)
 
     $chainStrings = @()
-    foreach ($chain in $node.Chains) {
-        $chainStrings += Format-Chain $chain
-    }
-    $chainsPart = "Chains=({0})" -f ($chainStrings -join ",")
-
-    $extraParts = @()
+    foreach ($chain in $node.Chains) { $chainStrings += Format-Chain $chain }
+    $chainsPart  = "Chains=({0})" -f ($chainStrings -join ",")
+    $extraParts  = @()
     foreach ($limitType in @("CapsuleLimits","BoxLimits","PlanarLimits","SphericalLimits")) {
         if ($node.$limitType -and $node.$limitType.Count -gt 0) {
             $c = Format-ExternalLimits $node.$limitType $limitType
             if ($c) { $extraParts += $c }
         }
     }
-    if ($node.LimitsDataAsset) {
-        $lda = Format-LimitsDataAsset $node.LimitsDataAsset
-        if ($lda) { $extraParts += $lda }
-    }
-
-    $extra = if ($extraParts.Count -gt 0) { "," + ($extraParts -join ",") } else { "" }
-
-    $row  = $index % 10
-    $col  = [math]::Floor($index / 10)
-    $posX = $col * 400
-    $posY = $row * 144
-
-    # Build LinkedTo parts
+    if ($node.LimitsDataAsset) { $lda = Format-LimitsDataAsset $node.LimitsDataAsset; if ($lda) { $extraParts += $lda } }
+    $extra       = if ($extraParts.Count -gt 0) { "," + ($extraParts -join ",") } else { "" }
+    $posX        = [math]::Floor($index / 10) * 400
+    $posY        = ($index % 10) * 144
     $inLinkedTo  = if ($prevName) { ",LinkedTo=($prevName $prevOutGuid)" } else { "" }
     $outLinkedTo = if ($nextName) { ",LinkedTo=($nextName $nextInGuid)"  } else { "" }
 
@@ -225,28 +234,21 @@ End Object
 "@
 }
 
-# ---------------------------------------------------------------------------
-# ModifyBone node formatter
-# ---------------------------------------------------------------------------
 function Format-ModifyBoneNode {
     param ($key, $node, $index, $inGuid, $outGuid, $prevName, $prevOutGuid, $nextName, $nextInGuid)
 
-    $bone   = $node.BoneToModify.BoneName
-    $t      = $node.Translation
-    $r      = $node.Rotation
-    $s      = $node.Scale
-    $tmode  = ($node.TranslationMode  -split "::")[-1]
-    $rmode  = ($node.RotationMode     -split "::")[-1]
-    $smode  = ($node.ScaleMode        -split "::")[-1]
-    $tspace = ($node.TranslationSpace -split "::")[-1]
-    $rspace = ($node.RotationSpace    -split "::")[-1]
-    $sspace = ($node.ScaleSpace       -split "::")[-1]
-
-    $row  = $index % 10
-    $col  = [math]::Floor($index / 10)
-    $posX = $col * 400
-    $posY = $row * 144
-
+    $bone        = $node.BoneToModify.BoneName
+    $t           = $node.Translation
+    $r           = $node.Rotation
+    $s           = $node.Scale
+    $tmode       = ($node.TranslationMode  -split "::")[-1]
+    $rmode       = ($node.RotationMode     -split "::")[-1]
+    $smode       = ($node.ScaleMode        -split "::")[-1]
+    $tspace      = ($node.TranslationSpace -split "::")[-1]
+    $rspace      = ($node.RotationSpace    -split "::")[-1]
+    $sspace      = ($node.ScaleSpace       -split "::")[-1]
+    $posX        = [math]::Floor($index / 10) * 400
+    $posY        = ($index % 10) * 144
     $inLinkedTo  = if ($prevName) { ",LinkedTo=($prevName $prevOutGuid)" } else { "" }
     $outLinkedTo = if ($nextName) { ",LinkedTo=($nextName $nextInGuid)"  } else { "" }
 
@@ -265,13 +267,10 @@ End Object
 "@
 }
 
-# ---------------------------------------------------------------------------
-# Constraint node formatter
-# ---------------------------------------------------------------------------
 function Format-ConstraintNode {
     param ($key, $node, $index, $inGuid, $outGuid, $prevName, $prevOutGuid, $nextName, $nextInGuid)
 
-    $bone = $node.BoneToModify.BoneName
+    $bone         = $node.BoneToModify.BoneName
     $setupEntries = $node.ConstraintSetup | ForEach-Object {
         $targetBone = $_.TargetBone.BoneName
         $offset     = ($_.OffsetOption  -split "::")[-1]
@@ -281,13 +280,9 @@ function Format-ConstraintNode {
         $pz = $_.PerAxis.bZ.ToString().ToLower()
         "(TargetBone=(BoneName=""$targetBone""),OffsetOption=$offset,TransformType=$ttype,PerAxis=(bX=$px,bY=$py,bZ=$pz))"
     }
-    $weights = $node.ConstraintWeights | ForEach-Object { Format-Float $_ }
-
-    $row  = $index % 10
-    $col  = [math]::Floor($index / 10)
-    $posX = $col * 400
-    $posY = $row * 144
-
+    $weights     = $node.ConstraintWeights | ForEach-Object { Format-Float $_ }
+    $posX        = [math]::Floor($index / 10) * 400
+    $posY        = ($index % 10) * 144
     $inLinkedTo  = if ($prevName) { ",LinkedTo=($prevName $prevOutGuid)" } else { "" }
     $outLinkedTo = if ($nextName) { ",LinkedTo=($nextName $nextInGuid)"  } else { "" }
 
@@ -306,9 +301,6 @@ End Object
 "@
 }
 
-# ---------------------------------------------------------------------------
-# LayeredBoneBlend node formatter
-# ---------------------------------------------------------------------------
 function Format-LayeredBoneBlendNode {
     param ($key, $node, $index, $inGuid, $outGuid, $prevName, $prevOutGuid, $nextName, $nextInGuid)
 
@@ -325,18 +317,13 @@ function Format-LayeredBoneBlendNode {
     $meshSpaceScale = $node.bMeshSpaceScaleBlend.ToString()
     $curveBlend     = ($node.CurveBlendOption -split "::")[-1]
     $blendRoot      = $node.bBlendRootMotionBasedOnRootBone.ToString()
-
-    $weightsPart = ""
+    $weightsPart    = ""
     if ($node.BlendWeights -and $node.BlendWeights.Count -gt 0) {
         $w = $node.BlendWeights | ForEach-Object { "{0:F6}" -f $_ }
         $weightsPart = ",BlendWeights=({0})" -f ($w -join ",")
     }
-
-    $row  = $index % 10
-    $col  = [math]::Floor($index / 10)
-    $posX = $col * 400
-    $posY = $row * 144
-
+    $posX        = [math]::Floor($index / 10) * 400
+    $posY        = ($index % 10) * 144
     $inLinkedTo  = if ($prevName) { ",LinkedTo=($prevName $prevOutGuid)" } else { "" }
     $outLinkedTo = if ($nextName) { ",LinkedTo=($nextName $nextInGuid)"  } else { "" }
 
@@ -352,52 +339,43 @@ End Object
 }
 
 # ---------------------------------------------------------------------------
-# First pass — collect all nodes and pre-generate GUIDs
+# First pass — collect nodes and pre-generate GUIDs
 # ---------------------------------------------------------------------------
 $nodeList = @()
 
 foreach ($key in $props.PSObject.Properties.Name) {
     $node = $props.$key
     $type = $null
-
     if      ($key -like "AnimGraphNode_KawaiiPhysics*")   { $type = "Kawaii" }
     elseif  ($key -like "AnimGraphNode_ModifyBone*")       { $type = "ModifyBone" }
     elseif  ($key -like "AnimGraphNode_Constraint*")       { $type = "Constraint" }
     elseif  ($key -like "AnimGraphNode_LayeredBoneBlend*") { $type = "LayeredBoneBlend" }
-
     if ($type) {
-        $nodeList += [PSCustomObject]@{
-            Key     = $key
-            Node    = $node
-            Type    = $type
-            InGuid  = New-Guid
-            OutGuid = New-Guid
-        }
+        $nodeList += [PSCustomObject]@{ Key = $key; Node = $node; Type = $type; InGuid = New-Guid; OutGuid = New-Guid }
     }
 }
 
 Write-Host "Total nodes to process: $($nodeList.Count)"
 
 # ---------------------------------------------------------------------------
-# Second pass — format each node with prev/next link info
+# Second pass — format with links
 # ---------------------------------------------------------------------------
 for ($i = 0; $i -lt $nodeList.Count; $i++) {
-    $entry = $nodeList[$i]
-    $prev  = if ($i -gt 0)                    { $nodeList[$i - 1] } else { $null }
-    $next  = if ($i -lt $nodeList.Count - 1)  { $nodeList[$i + 1] } else { $null }
-
-    $prevName   = if ($prev) { $prev.Key }    else { $null }
+    $entry       = $nodeList[$i]
+    $prev        = if ($i -gt 0)                   { $nodeList[$i - 1] } else { $null }
+    $next        = if ($i -lt $nodeList.Count - 1) { $nodeList[$i + 1] } else { $null }
+    $prevName    = if ($prev) { $prev.Key }     else { $null }
     $prevOutGuid = if ($prev) { $prev.OutGuid } else { $null }
-    $nextName   = if ($next) { $next.Key }    else { $null }
+    $nextName    = if ($next) { $next.Key }     else { $null }
     $nextInGuid  = if ($next) { $next.InGuid }  else { $null }
 
     Write-Host "Processing $($entry.Type): $($entry.Key)"
 
     switch ($entry.Type) {
-        "Kawaii"          { $output += Format-KawaiiPhysicsNode   $entry.Key $entry.Node $i $entry.InGuid $entry.OutGuid $prevName $prevOutGuid $nextName $nextInGuid }
-        "ModifyBone"      { $output += Format-ModifyBoneNode       $entry.Key $entry.Node $i $entry.InGuid $entry.OutGuid $prevName $prevOutGuid $nextName $nextInGuid }
-        "Constraint"      { $output += Format-ConstraintNode       $entry.Key $entry.Node $i $entry.InGuid $entry.OutGuid $prevName $prevOutGuid $nextName $nextInGuid }
-        "LayeredBoneBlend"{ $output += Format-LayeredBoneBlendNode $entry.Key $entry.Node $i $entry.InGuid $entry.OutGuid $prevName $prevOutGuid $nextName $nextInGuid }
+        "Kawaii"           { $output += Format-KawaiiPhysicsNode   $entry.Key $entry.Node $i $entry.InGuid $entry.OutGuid $prevName $prevOutGuid $nextName $nextInGuid }
+        "ModifyBone"       { $output += Format-ModifyBoneNode       $entry.Key $entry.Node $i $entry.InGuid $entry.OutGuid $prevName $prevOutGuid $nextName $nextInGuid }
+        "Constraint"       { $output += Format-ConstraintNode       $entry.Key $entry.Node $i $entry.InGuid $entry.OutGuid $prevName $prevOutGuid $nextName $nextInGuid }
+        "LayeredBoneBlend" { $output += Format-LayeredBoneBlendNode $entry.Key $entry.Node $i $entry.InGuid $entry.OutGuid $prevName $prevOutGuid $nextName $nextInGuid }
     }
 }
 
