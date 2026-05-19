@@ -22,11 +22,12 @@ Parameters
 -AnimBPClass → The AnimBlueprintGeneratedClass name (e.g., Post_1024303_Physics_C)
 ### Usage
 Change the following params at the top of the scripts and then run the script. See above for parameter specifics.
-
+```
 param (
     [string]$InputJsonPath = "T:\Modding\Unreal Engine\_Scripts\Assets\Example.json",
     [string]$OutputTxtPath = "T:\Modding\Unreal Engine\_Scripts\AnimBP_Output.txt",
 )
+```
 ### Pasting into UE
 Open your target Animation Blueprint.
 Press CTRL+V — nodes appear with the same settings as the JSON.
