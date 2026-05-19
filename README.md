@@ -20,13 +20,15 @@ Done.
 - InputJsonPath → Path to the exported input JSON (from FModel)
 - OutputTxtPath → Where to save the UE paste text
 ### Usage
-Change the following params at the top of the scripts and then run the script. See above for parameter specifics.
+Change the following params at the top of the scripts.
 ```
 param (
     [string]$InputJsonPath = "T:\Modding\Unreal Engine\_Scripts\Assets\Example.json",
     [string]$OutputTxtPath = "T:\Modding\Unreal Engine\_Scripts\AnimBP_Output.txt",
 )
 ```
+And then run the script by using 
+```.\AnimBP_Convert.ps1```
 ### Pasting into UE
 Open your target Animation Blueprint.
 Press CTRL+V — nodes appear with the same settings as the JSON.
