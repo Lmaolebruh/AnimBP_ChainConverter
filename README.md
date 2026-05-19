@@ -25,7 +25,6 @@ Right Click the file & "Run with Powershell"
 - And it will prompt you after to give it the InputJsonPath 
 
 Make sure to remove quotations from the file paths
-```.\AnimBP_Convert.ps1```
 ### Pasting into UE
 Open your target Animation Blueprint.
 Press CTRL+V — nodes appear with the same settings as the JSON.
